@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <sys/mman.h>
 #include <stdint.h>
+#include <time.h>
 
 #define UIO_DEV_PATH "/sys/class/uio/"
 #define DEVNAME_MAX 128
@@ -112,8 +113,56 @@ static int get_uio_mapping(const char* map_dir, unsigned int* base_addr, unsigne
     return 0;
 }
 
+// Multiplier test
+int mul_test(void* mem_base, unsigned int mem_size)
+{
+    static const uint32_t num_units = 4;
+    uint32_t operand_a[num_units];
+    uint32_t operand_b[num_units];
+    uint32_t result[num_units];
+
+    uint32_t i;
+
+    srand((unsigned)time(NULL));
+
+    // Generate and write operands
+    for (i = 0; i < num_units; i++) {
+        operand_a[i] = ((rand() << 16) & 0x7FFF) | rand();
+        operand_b[i] = ((rand() << 16) & 0x7FFF) | rand();
+        //operand_b[i] = rand() & 0xFF;
+
+        // Calculate correct result
+        result[i] = (operand_a[i] * operand_b[i]) >> 8;
+
+        //printf("Writing to: %x and %x\n", (uint32_t)mem_base + sizeof(uint32_t) * 3 * i, (uint32_t)mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t));
+        printf("Writing: %x and %x\n", operand_a[i], operand_b[i]);
+
+        break;
+    }
+    // Write to the register
+    *(uint32_t*)(mem_base)                        = operand_a[0];
+    *(uint32_t*)(mem_base + sizeof(uint32_t))     = operand_b[0];
+    *(uint32_t*)(mem_base + sizeof(uint32_t) * 2) = 4;
+
+    i = 0;
+    while (1) {
+        if ((*(uint32_t*)(mem_base + sizeof(uint32_t) * 2) & 0x3) != 0) {
+            break;
+        }
+        if (i > (1 << 24)) {
+            break;
+        }
+        i++;
+    }
+
+    for (i = 0; i < num_units * 3; i++) {
+        printf("Data read: %x (%x)\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * i), (uint32_t)(mem_base + sizeof(uint32_t) * i));
+    }
+    return 0;
+}
+
 // TDM multiplier test
-static int tdm_mul_test(void* mem_base, unsigned int mem_size)
+int tdm_mul_test(void* mem_base, unsigned int mem_size)
 {
     static const uint32_t num_units = 4;
     uint32_t operand_a[num_units];
@@ -125,18 +174,28 @@ static int tdm_mul_test(void* mem_base, unsigned int mem_size)
     // Generate and write operands
     for (i = 0; i < num_units; i++) {
         operand_a[i] = ((rand() << 16) & 0x7F) | rand();
-        operand_b[i] = rand() & 0xF;
+        operand_b[i] = rand() & 0xFF;
 
         // Calculate correct result
         result[i] = (operand_a[i] * operand_b[i]) >> 8;
 
-        printf("Writing to: %x and %x\n", (uint32_t)mem_base + sizeof(uint32_t) * 3 * i, (uint32_t)mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t));
+        //printf("Writing to: %x and %x\n", (uint32_t)mem_base + sizeof(uint32_t) * 3 * i, (uint32_t)mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t));
+        printf("Writing: %x and %x\n", operand_a[i], operand_b[i]);
 
         // Write to the register
         *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i)                    = operand_a[i];
         *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t)) = operand_b[i];
+
+        //usleep(1000);
+
+        //printf("Reading: %x\n", (uint32_t)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t) * 2));
+        //printf("Data read: %x\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t) * 2));
+
     }
-    sleep(1000);
+    usleep(500);
+    for (i = 0; i < num_units * 3; i++) {
+        printf("Data read: %x (%x)\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * i), (uint32_t)(mem_base + sizeof(uint32_t) * i));
+    }
     return 0;
 }
 
@@ -158,7 +217,7 @@ int main(int argc, char *argv[])
             printf("Failed to get memory mapping from sysfs\n");
             return 0;
         }
-        printf("Base address: %x\nMemory size: %x\nOffset: %u\n", base_addr, mem_size, mem_offset);
+        printf("Base address: %x, Memory size: %x, Offset: %u\n", base_addr, mem_size, mem_offset);
         if ((base_addr > 0) && (mem_size > 0)) {
             int uio_fd = 0;
             char uio_filename[DEVNAME_MAX];
@@ -173,10 +232,11 @@ int main(int argc, char *argv[])
                 void* dev_mem_base = mmap((void*)base_addr, mem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, uio_fd, mem_offset);
                 if (dev_mem_base != NULL) {
                     int result = 0;
-                    printf("Address %x is mapped to %x\n", base_addr, (unsigned int)dev_mem_base);
+                    printf("mmap() success\n\n");
 
                     // Add test here
-                    result = tdm_mul_test(dev_mem_base, mem_size);
+                    //result = tdm_mul_test(dev_mem_base, mem_size);
+                    result = mul_test(dev_mem_base, mem_size);
 
                     munmap(dev_mem_base, mem_size);
                 }
