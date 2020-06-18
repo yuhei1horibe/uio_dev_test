@@ -128,7 +128,7 @@ int mul_test(void* mem_base, unsigned int mem_size)
     // Generate and write operands
     for (i = 0; i < num_units; i++) {
         operand_a[i] = ((rand() << 16) & 0x7FFF) | rand();
-        operand_b[i] = ((rand() << 16) & 0x7FFF) | rand();
+        operand_b[i] = rand() & 0xFF;
         //operand_b[i] = rand() & 0xFF;
 
         // Calculate correct result
@@ -171,6 +171,8 @@ int tdm_mul_test(void* mem_base, unsigned int mem_size)
 
     uint32_t i;
 
+    srand((unsigned)time(NULL));
+
     // Generate and write operands
     for (i = 0; i < num_units; i++) {
         operand_a[i] = ((rand() << 16) & 0x7F) | rand();
@@ -192,7 +194,7 @@ int tdm_mul_test(void* mem_base, unsigned int mem_size)
         //printf("Data read: %x\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t) * 2));
 
     }
-    usleep(500);
+    usleep(1000);
     for (i = 0; i < num_units * 3; i++) {
         printf("Data read: %x (%x)\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * i), (uint32_t)(mem_base + sizeof(uint32_t) * i));
     }
@@ -229,7 +231,7 @@ int main(int argc, char *argv[])
             uio_fd = open(uio_filename, O_RDWR);
             if (uio_fd >= 0) {
                 printf("UIO device: %s opened: %d\n", uio_filename, uio_fd);
-                void* dev_mem_base = mmap((void*)base_addr, mem_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, uio_fd, mem_offset);
+                void* dev_mem_base = mmap(NULL, mem_size, PROT_READ | PROT_WRITE, MAP_SHARED, uio_fd, mem_offset);
                 if (dev_mem_base != NULL) {
                     int result = 0;
                     printf("mmap() success\n\n");
