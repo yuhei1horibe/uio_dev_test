@@ -196,19 +196,90 @@ int tdm_mul_test(void* mem_base, unsigned int mem_size)
 #endif
 
             // Write to the register
-            write_addr        = (uint32_t*)(mem_base + sizeof(uint32_t) * 3 * j);
+            write_addr        = (uint32_t*)(mem_base + sizeof(uint32_t) * 4 * j);
             *write_addr       = operand_a[j];
             *(write_addr + 1) = operand_b[j];
         }
         usleep(100);
         for (j = 0; j < num_units; j++) {
-            read_addr = (uint32_t*)(mem_base + sizeof(uint32_t) * 3 * j + sizeof(uint32_t) * 2);
+            read_addr = (uint32_t*)(mem_base + sizeof(uint32_t) * 4 * j + sizeof(uint32_t) * 2);
             read_data = *read_addr;
 #ifdef DEBUG
             printf("Data read(%x): %x ... ", (uint32_t)read_addr, read_data);
 #endif
             if (result[j] != read_data) {
                 printf("Error!! Expected: %x, Calculated: %x\n", result[j], read_data);
+                errors++;
+            }
+#ifdef DEBUG
+            else {
+                printf("OK\n");
+            }
+#endif
+        }
+    }
+    printf("Test done!!\nErrors: %u/%u, Error rate: %.2f\n", errors, num_iter, (float)(errors / num_iter) * 100);
+    return 0;
+}
+
+// TDM divider test
+int tdm_div_test(void* mem_base, unsigned int mem_size)
+{
+    static const uint32_t num_iter  = 100000;
+    static const uint32_t num_units = 4;
+    uint32_t operand_a[num_units];
+    uint32_t operand_b[num_units];
+    uint32_t result1[num_units];
+    uint32_t result2[num_units];
+    uint32_t read_data1 = 0;
+    uint32_t read_data2 = 0;
+    uint32_t* write_addr = NULL;
+    uint32_t* read_addr = NULL;
+    uint32_t errors = 0;
+
+    uint32_t i;
+    uint32_t j;
+
+    srand((unsigned)time(NULL));
+
+    printf("TDM divider test started.\n");
+
+    // Generate and write operands
+    for (i = 0; i < num_iter; i++) {
+        for (j = 0; j < num_units; j++) {
+            operand_a[j] = ((rand() << 16) & 0x7F) | rand();
+            while ((operand_b[j] = rand() & 0xFFFF) == 0)
+                ;
+
+            // Calculate correct result1
+            result1[j] = (operand_a[j] / operand_b[j]);
+            result2[j] = (operand_a[j] % operand_b[j]);
+
+#ifdef DEBUG
+            printf("Writing: %x and %x\n", operand_a[j], operand_b[j]);
+#endif
+
+            // Write to the register
+            write_addr        = (uint32_t*)(mem_base + sizeof(uint32_t) * 4 * j);
+            *write_addr       = operand_a[j];
+            *(write_addr + 1) = operand_b[j];
+        }
+        usleep(100);
+        for (j = 0; j < num_units; j++) {
+            read_addr = (uint32_t*)(mem_base + sizeof(uint32_t) * 4 * j + sizeof(uint32_t) * 2);
+            read_data1 = *read_addr;
+            read_data2 = *(read_addr + 1);
+#ifdef DEBUG
+            printf("Data1 read(%x): %x ... ", (uint32_t)read_addr, read_data1);
+            printf("Data2 read(%x): %x ... ", (uint32_t)(read_addr + 1), read_data2);
+#endif
+            if (result1[j] != read_data1) {
+                printf("Error!! Quotient Expected: %x, Calculated: %x\n", result1[j], read_data1);
+                errors++;
+            }
+
+            if (result2[j] != read_data2) {
+                printf("Error!! Reminder Expected: %x, Calculated: %x\n", result2[j], read_data2);
                 errors++;
             }
 #ifdef DEBUG
@@ -258,7 +329,8 @@ int main(int argc, char *argv[])
                     printf("mmap() success\n\n");
 
                     // Add test here
-                    result = tdm_mul_test(dev_mem_base, mem_size);
+                    result = tdm_div_test(dev_mem_base, mem_size);
+                    //result = tdm_mul_test(dev_mem_base, mem_size);
                     //result = mul_test(dev_mem_base, mem_size);
 
                     munmap(dev_mem_base, mem_size);
