@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <time.h>
 
+//#define DEBUG
+
 #define UIO_DEV_PATH "/sys/class/uio/"
 #define DEVNAME_MAX 128
 
@@ -134,7 +136,6 @@ int mul_test(void* mem_base, unsigned int mem_size)
         // Calculate correct result
         result[i] = (operand_a[i] * operand_b[i]) >> 8;
 
-        //printf("Writing to: %x and %x\n", (uint32_t)mem_base + sizeof(uint32_t) * 3 * i, (uint32_t)mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t));
         printf("Writing: %x and %x\n", operand_a[i], operand_b[i]);
 
         break;
@@ -164,40 +165,60 @@ int mul_test(void* mem_base, unsigned int mem_size)
 // TDM multiplier test
 int tdm_mul_test(void* mem_base, unsigned int mem_size)
 {
+    static const uint32_t num_iter  = 100000;
     static const uint32_t num_units = 4;
     uint32_t operand_a[num_units];
     uint32_t operand_b[num_units];
     uint32_t result[num_units];
+    uint32_t read_data = 0;
+    uint32_t* write_addr = NULL;
+    uint32_t* read_addr = NULL;
+    uint32_t errors = 0;
 
     uint32_t i;
+    uint32_t j;
 
     srand((unsigned)time(NULL));
 
+    printf("TDM multiplier test started.\n");
+
     // Generate and write operands
-    for (i = 0; i < num_units; i++) {
-        operand_a[i] = ((rand() << 16) & 0x7F) | rand();
-        operand_b[i] = rand() & 0xFF;
+    for (i = 0; i < num_iter; i++) {
+        for (j = 0; j < num_units; j++) {
+            operand_a[j] = ((rand() << 16) & 0x7F) | rand();
+            operand_b[j] = rand() & 0xFF;
 
-        // Calculate correct result
-        result[i] = (operand_a[i] * operand_b[i]) >> 8;
+            // Calculate correct result
+            result[j] = ((uint64_t)operand_a[j] * operand_b[j]) >> 8;
 
-        //printf("Writing to: %x and %x\n", (uint32_t)mem_base + sizeof(uint32_t) * 3 * i, (uint32_t)mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t));
-        printf("Writing: %x and %x\n", operand_a[i], operand_b[i]);
+#ifdef DEBUG
+            printf("Writing: %x and %x\n", operand_a[j], operand_b[j]);
+#endif
 
-        // Write to the register
-        *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i)                    = operand_a[i];
-        *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t)) = operand_b[i];
-
-        //usleep(1000);
-
-        //printf("Reading: %x\n", (uint32_t)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t) * 2));
-        //printf("Data read: %x\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * 3 * i + sizeof(uint32_t) * 2));
-
+            // Write to the register
+            write_addr        = (uint32_t*)(mem_base + sizeof(uint32_t) * 3 * j);
+            *write_addr       = operand_a[j];
+            *(write_addr + 1) = operand_b[j];
+        }
+        usleep(100);
+        for (j = 0; j < num_units; j++) {
+            read_addr = (uint32_t*)(mem_base + sizeof(uint32_t) * 3 * j + sizeof(uint32_t) * 2);
+            read_data = *read_addr;
+#ifdef DEBUG
+            printf("Data read(%x): %x ... ", (uint32_t)read_addr, read_data);
+#endif
+            if (result[j] != read_data) {
+                printf("Error!! Expected: %x, Calculated: %x\n", result[j], read_data);
+                errors++;
+            }
+#ifdef DEBUG
+            else {
+                printf("OK\n");
+            }
+#endif
+        }
     }
-    usleep(1000);
-    for (i = 0; i < num_units * 3; i++) {
-        printf("Data read: %x (%x)\n", *(uint32_t*)(mem_base + sizeof(uint32_t) * i), (uint32_t)(mem_base + sizeof(uint32_t) * i));
-    }
+    printf("Test done!!\nErrors: %u/%u, Error rate: %.2f\n", errors, num_iter, (float)(errors / num_iter) * 100);
     return 0;
 }
 
@@ -237,8 +258,8 @@ int main(int argc, char *argv[])
                     printf("mmap() success\n\n");
 
                     // Add test here
-                    //result = tdm_mul_test(dev_mem_base, mem_size);
-                    result = mul_test(dev_mem_base, mem_size);
+                    result = tdm_mul_test(dev_mem_base, mem_size);
+                    //result = mul_test(dev_mem_base, mem_size);
 
                     munmap(dev_mem_base, mem_size);
                 }
